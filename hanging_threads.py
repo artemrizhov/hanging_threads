@@ -97,10 +97,16 @@ def thread2list(frame):
     return l
 
 
-def monitor(seconds_frozen, tests_per_second):
+def monitor(seconds_frozen, tests_per_second, seconds_ignore):
     current_thread = threading.current_thread()
-    self = get_ident()
     old_threads = {}
+    if seconds_ignore:
+        time.sleep(seconds_ignore)
+        ignore_threads = tuple(frame_id for frame_id, frame
+                               in sys._current_frames().items())
+    else:
+        # Ignore the monitoring thread.
+        ignore_threads = (get_ident(),)
     while not current_thread.is_stopped():
         time.sleep(1. / tests_per_second)
         now = time.time()
@@ -110,9 +116,10 @@ def monitor(seconds_frozen, tests_per_second):
         for frame_id, frame in frames.items():
             new_threads[frame_id] = thread2list(frame)
         for thread_id, frame_list in new_threads.items():
-            if thread_id == self: continue
+            if thread_id in ignore_threads:
+                continue
             if thread_id not in old_threads or \
-               frame_list != old_threads[thread_id][0]:
+                    frame_list != old_threads[thread_id][0]:
                 new_threads[thread_id] = (frame_list, now)
             elif old_threads[thread_id][1] < then:
                 print_frame_list(frame_list, thread_id)
@@ -122,18 +129,20 @@ def monitor(seconds_frozen, tests_per_second):
 
 
 def print_frame_list(frame_list, frame_id):
-    sys.stderr.write('-' * 20 + 
+    sys.stderr.write('-' * 20 +
                      'Thread {}'.format(frame_id).center(20) +
                      '-' * 20 +
-                     '\n' + 
+                     '\n' +
                      ''.join(frame_list))
 
 
 def start_monitoring(seconds_frozen=SECONDS_FROZEN,
-                     tests_per_second=TESTS_PER_SECOND):
+                     tests_per_second=TESTS_PER_SECOND,
+                     seconds_ignore=None):
     """Print the stack trace of the deadlock after hanging `seconds_frozen`"""
-    thread = StoppableThread(target=monitor, args=(seconds_frozen,
-                                                   tests_per_second))
+    thread = StoppableThread(target=monitor,
+                             args=(seconds_frozen, tests_per_second,
+                                   seconds_ignore))
     thread.daemon = True
     thread.start()
     return thread
